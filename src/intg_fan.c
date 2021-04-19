@@ -1,59 +1,81 @@
 #include <msp430.h>
 #include "intg_fan.h"
 
+// Eight fixed PWM ratio in manual mode 
+const double kMotorPwmRatio[8] = {0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.65};
+// 0xFFFF and 0x0100 are consistent with the max value of Timer_As' main counter
 const int kEinkRefreshTimeCounterMax = EINK_REFRESH_TIME/1000*(8000000/0xFFFF);
 const int kNixieRefreshTimeCounterMax = NIXIE_REFRESH_TIME/1000*(8000000/0x0100);
+
 volatile unsigned int eink_refresh_time_counter = 0;
 volatile unsigned int nixie_refresh_time_counter = 0;
 volatile int nixie_digit = 0;
 
 void InitClock(void)
 {
-	UCSCTL6 &= ~XT1OFF;          //鍚姩XT1
-	P5SEL |= BIT2 + BIT3;        //XT2寮曡剼鍔熻兘閫夋嫨
-	UCSCTL6 &= ~XT2OFF;          //鎵撳紑XT2
-
-	//璁剧疆绯荤粺鏃堕挓鐢熸垚鍣�1,FLL control loop鍏抽棴SCG0=1,鍏抽棴閿侀鐜紝鐢ㄦ埛鑷畾涔塙CSCTL0~1宸ヤ綔妯″紡
+	UCSCTL6 &= ~XT1OFF;          
+	P5SEL |= BIT2 + BIT3;        
+	UCSCTL6 &= ~XT2OFF;          
 	__bis_SR_register(SCG0);
-
-	//鎵嬪姩閫夋嫨DCO棰戠巼闃舵锛�8绉嶉樁姊級锛岀‘瀹欴CO棰戠巼澶ц嚧鑼冨洿銆�
 	UCSCTL0 = DCO0+DCO1+DCO2+DCO3+DCO4;
-	//DCO棰戠巼鑼冨洿鍦�28.2MHz浠ヤ笅锛孌CO棰戠巼鑼冨洿閫夋嫨锛堜笁涓猙it浣嶏紝鏀瑰彉鐩存祦鍙戠敓鍣ㄧ數鍘嬶紝杩涜�屾敼鍙楧CO杈撳嚭棰戠巼锛�
 	UCSCTL1 = DCORSEL_4;
-	//fDCOCLK/32锛岄攣棰戠幆鍒嗛鍣�
 	UCSCTL2 = FLLD_5;
-
-	//n=8,FLLREFCLK鏃堕挓婧愪负XT2CLK
-	//DCOCLK=D*(N+1)*(FLLREFCLK/n)
-	//DCOCLKDIV=(N+1)*(FLLREFCLK/n)
 	UCSCTL3 = SELREF_5 + FLLREFDIV_3;
-	//ACLK鐨勬椂閽熸簮涓篋COCLKDIV,MCLK\SMCLK鐨勬椂閽熸簮涓篋COCLK
 	UCSCTL4 = SELA_4 + SELS_3 +SELM_3;
-	//ACLK鐢盌COCLKDIV鐨�32鍒嗛寰楀埌锛孲MCLK鐢盌COCLK鐨�2鍒嗛寰楀埌
 	UCSCTL5 = DIVA_5 +DIVS_1;
 }
 
 void InitGpio(void)
 {
-	P8DIR |= BIT1;
-    P8OUT &=~ BIT1;
+	// H-bridge drive circuit 
+    P1DIR |= BIT5; // NSLEEP
+    P1SEL |= BIT5;
+    P2DIR |= BIT4; // IN1
+    P2DIR |= BIT5; // IN2
+
+    // Button S1
+    P1DIR &= ~BIT2;
+    P1REN |= BIT2;
+    P1IES &= ~BIT2;
+    P1IFG &= ~BIT2;
+    P1IE |= BIT2;
+    // Button S2
+    P1DIR &= ~BIT3;
+    P1REN |= BIT3;
+    P1IES &= ~BIT3;
+    P1IFG &= ~BIT3;
+    P1IE |= BIT3;
+    // Button S3
+    P2DIR &= ~BIT3;
+    P2REN |= BIT3;
+    P2IES &= ~BIT3;
+    P2IFG &= ~BIT3;
+    P2IE |= BIT3;
+    // Button S4
+    P2REN |= BIT6;
+    P2OUT |= BIT6;
+    P2IES &= ~BIT6;
+    P2IFG &= ~BIT6;
+    P2IE |= BIT6;
+
 }
 
-// void InitAdc(void)
-// {
+void InitAdc(void)
+{
 
-// }
+}
 
 void InitTimerA(void)
 {
-	// // Timer_A0 Control Register
-	// TA0CTL |= TASSEL_2;// Timer_A0 clock source select: SMCLK 8MHz
-	// TA0CTL |= MC_1;// Mode control: up mode
-	// TA0CTL |= TACLR;// Timer_A0 clear
-	// // Timer_A0 Capture/Compare Control 4 Register
-	// TA0CCTL4 = OUTMOD_7;// Reset/set mode
-    // // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	// TA0CCR0 = ;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+
+	// Timer_A0 Control Register
+	TA0CTL |= TASSEL_2;// Timer_A0 clock source select: SMCLK 8MHz
+	TA0CTL |= MC_1;// Mode control: up mode
+	TA0CTL |= TACLR;// Timer_A0 clear
+	// Timer_A0 Capture/Compare Control 4 Register
+	TA0CCTL4 = OUTMOD_7;// Reset/set mode
+	TA0CCR0 = PWM_PEROID;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+	// pwm_ratio = TA0CCR4 / TA0CCR0
 
 	// Timer_A1 Control Register
 	TA1CTL |= TASSEL_2;// Timer_A1 clock source select: SMCLK 8MHz
@@ -61,23 +83,75 @@ void InitTimerA(void)
 	TA1CTL |= TACLR;// Timer_A1 clear
 	TA1CCTL0 = CCIE;// enable capture/compare interrupt
 	TA1CCR0 = 0xFFFF;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+
 	// Timer_A2 Control Register
 	TA2CTL |= TASSEL_2;// Timer_A2 clock source select: SMCLK 8MHz
 	TA2CTL |= MC_1;// Mode control: up mode
 	TA2CTL |= TACLR;// Timer_A2 clear
 	TA2CCTL0 = CCIE;// enable capture/compare interrupt
-	TA2CCR0 = 0x0100;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+	TA2CCR0 = 0x1000;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+
 }
 
-// void MeasureTemperature(void)
-// {
+void MotorAutoControl()
+{
 
-// }
+}
+void MotorManualControl()
+{
 
-// void MeasureMotorCurrent(void)
-// {
+	switch (intg_fan_status.motor_speed)
+	{
+	case MOTOR_SPEED_0:
+		TA0CCR4 = kMotorPwmRatio[0] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_1:
+		TA0CCR4 = kMotorPwmRatio[1] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_2:
+		TA0CCR4 = kMotorPwmRatio[2] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_3:
+		TA0CCR4 = kMotorPwmRatio[3] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_4:
+		TA0CCR4 = kMotorPwmRatio[4] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_5:
+		TA0CCR4 = kMotorPwmRatio[5] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_6:
+		TA0CCR4 = kMotorPwmRatio[6] * PWM_PEROID;
+		break;
+	case MOTOR_SPEED_7:
+		TA0CCR4 = kMotorPwmRatio[7] * PWM_PEROID;
+		break;
+	default:
+		break;
+	}
 
-// }
+}
+
+void PowerOn(void)
+{
+
+}
+
+void PowerOff(void)
+{
+    // MYRESET();
+	// TA0CCR4 = 0;
+}
+
+void MeasureTemperature(void)
+{
+
+}
+
+void MeasureMotorCurrent(void)
+{
+
+}
 
 void DisplayEinkScreen(void)
 {
@@ -86,6 +160,9 @@ void DisplayEinkScreen(void)
 	char motor_status[16] = "motor: ";
 	char motor_speed[16] = "speed: "; 
 
+
+
+	if (intg_fan_status.motor_mode == MOTOR_TURN)
 	if (intg_fan_status.fan_mode == FAN_AUTO_MODE)
 	{
 		strcat(fan_mode, "auto");
@@ -94,11 +171,15 @@ void DisplayEinkScreen(void)
 	{
 		strcat(fan_mode, "manual");
 	}
-	if (intg_fan_status.motor_mode == MOTOR_PARK)
-	{
-		strcat(motor_status, "park");
-	}
+
+
+
+
 	if (intg_fan_status.motor_mode == MOTOR_TURN)
+	// if (intg_fan_status.motor_mode == MOTOR_PARK)
+	// {
+	// 	strcat(motor_status, "park");
+	// }
 	{
 		strcat(motor_status, "turn");
 	}
@@ -106,20 +187,43 @@ void DisplayEinkScreen(void)
 	{
 		strcat(motor_status, "reverse");
 	}
-	if (intg_fan_status.motor_speed == MOTOR_LOW_SPEED)
+
+
+
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_0)
 	{
-		strcat(motor_speed, "low");
+		strcat(motor_speed, "1");
 	}
-	if (intg_fan_status.motor_speed == MOTOR_NORMAL_SPEED)
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_1)
 	{
-		strcat(motor_speed, "normal");
+		strcat(motor_speed, "2");
 	}
-	if (intg_fan_status.motor_speed == MOTOR_HIGH_SPEED)
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_2)
 	{
-		strcat(motor_speed, "high");
+		strcat(motor_speed, "3");
+	}
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_3)
+	{
+		strcat(motor_speed, "4");
+	}
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_4)
+	{
+		strcat(motor_speed, "5");
+	}
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_5)
+	{
+		strcat(motor_speed, "6");
+	}
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_6)
+	{
+		strcat(motor_speed, "7");
+	}
+	if (intg_fan_status.motor_speed == MOTOR_SPEED_7)
+	{
+		strcat(motor_speed, "8");
 	}
 
-    MYRESET();
+    // MYRESET();
     display(fan_mode, 0, 0, TimesNewRoman, size8, 0, 0);
     display(motor_status, 0, 15,TimesNewRoman, size8, 0, 0);
     display(motor_speed, 0, 30, TimesNewRoman, size8, 0, 0);
@@ -135,13 +239,8 @@ void DisplayEinkScreen(void)
 
 void DisplayNixie(void)
 {
-	// DisplayOneDigit(0,0);
-	// DisplayOneDigit(1,1);
-	// DisplayOneDigit(2,2);
-	// DisplayOneDigit(3,3);
+	for ( nixie_digit = 0; nixie_digit < 4; nixie_digit++)
+	{
+		DisplayOneDigit(nixie_digit,6);
+	}
 }
-
-// void MotorController(void)
-// {
-
-// }

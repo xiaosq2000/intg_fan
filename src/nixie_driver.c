@@ -786,5 +786,5 @@ void DisplayOneDigit(int digit, int num)
 			break;
 		}
 	}
-	
+
 }

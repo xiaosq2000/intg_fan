@@ -2,7 +2,7 @@
 
 ## 流程图 
 
-<img src="img/flowchart.jpg" style="zoom:100%;" />
+<img src="img/flowchart.svg" style="zoom:100%;" />
 
 ## 文件树
 
@@ -10,13 +10,18 @@
 📦include
  ┣ 📜eink_driver.h
  ┣ 📜eink_fonts_imgs.h
+ ┣ 📜i2c.h
  ┣ 📜intg_fan.h
- ┗ 📜nixie_driver.h
+ ┣ 📜nixie_driver.h
+ ┣ 📜tmp421.h
+ ┗ 📜type.h
 📦src
  ┣ 📜eink_driver.c
  ┣ 📜eink_fonts_imgs.c
+ ┣ 📜i2c.c
  ┣ 📜intg_fan.c
- ┗ 📜nixie_driver.c
+ ┣ 📜nixie_driver.c
+ ┗ 📜tmp421.c
 📦test
  ┗ 📜main.c
 ```

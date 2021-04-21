@@ -10,8 +10,9 @@ volatile unsigned int eink_refresh_time_counter = 0;
 volatile unsigned int nixie_refresh_time_counter = 0;
 volatile int nixie_digit = 0;
 
-unsigned char temperature_integral_part=0;
-unsigned char temperature_decimal_part=0;
+unsigned char* p_temperature_integral_part = NULL;
+unsigned char* p_temperature_decimal_part = NULL;
+unsigned int local_temperature = 0; //  centigrade degree, multiplied by 100
 
 void InitClock(void)
 {
@@ -147,8 +148,11 @@ void PowerOff(void)
 
 void MeasureTemperature(void)
 {
-    temperature_integral_part = R_I2C(0x55,0x00) - 64;
-    temperature_decimal_part = ( (R_I2C(0x55,0x10) >> 4) * 625 ) / 100;
+
+    p_temperature_integral_part = (R_I2C(0x55,0x00) - 64);
+    p_temperature_decimal_part = (((R_I2C(0x55,0x10) >> 4) * 625) / 100);
+	local_temperature = 100*(int)(*(&(p_temperature_integral_part))) + (int)(*(&(p_temperature_decimal_part)));
+
 }
 
 void MeasureMotorCurrent(void)
@@ -234,16 +238,14 @@ void DisplayEinkScreen(void)
 	}
 
 	// Temperature
-	unsigned char temperature_decade = (temperature_integral_part/10);
-	unsigned char temperature_unit = (temperature_integral_part%10);
-	unsigned char temperature_tenth = (temperature_decimal_part/10);
-	unsigned char temperature_hundredth = (temperature_decimal_part%10);
 
-	strcat(temperature, &(&temperature_decade));
-	strcat(temperature, &(&temperature_unit));
-	strcat(temperature, ".");
-	strcat(temperature, &(&temperature_tenth));
-	strcat(temperature, &(&temperature_hundredth));
+	unsigned char temp[5] = {0};
+	temp[0] = (local_temperature / 1000)+0x30;
+	temp[1] = ( (local_temperature % 1000) / 100 )+0x30;
+	temp[2] = '.';
+	temp[3] = ( (local_temperature % 100) / 10 )+0x30;
+	temp[4] = ( (local_temperature % 10) )+0x30;
+	strcat(temperature, temp);
 
 	// Refresh 
     Init_buff();
@@ -266,8 +268,10 @@ void DisplayEinkScreen(void)
 
 void DisplayNixie(void)
 {
+
 	for ( nixie_digit = 0; nixie_digit < 4; nixie_digit++)
 	{
 		DisplayOneDigit(nixie_digit,6);
 	}
+
 }

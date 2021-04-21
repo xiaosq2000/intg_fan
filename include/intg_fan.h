@@ -45,6 +45,9 @@ extern volatile unsigned int nixie_refresh_time_counter;
 extern volatile int nixie_digit;
 
 extern const double kMotorPwmRatio[]; 
+
+extern unsigned char temperature_integral_part;
+extern unsigned char temperature_decimal_part;
 /* Struct ------------------------------------------- */
 
 struct IntgFanStatus

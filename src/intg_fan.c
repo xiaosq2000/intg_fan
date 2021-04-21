@@ -1,15 +1,17 @@
 #include <msp430.h>
 #include "intg_fan.h"
 
-// Eight fixed PWM ratio in manual mode 
 const double kMotorPwmRatio[8] = {0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.65};
-// 0xFFFF and 0x0100 are consistent with the max value of Timer_As' main counter
+
 const int kEinkRefreshTimeCounterMax = EINK_REFRESH_TIME/1000*(8000000/0xFFFF);
-const int kNixieRefreshTimeCounterMax = NIXIE_REFRESH_TIME/1000*(8000000/0x0100);
+const int kNixieRefreshTimeCounterMax = NIXIE_REFRESH_TIME/1000*(8000000/0x1000);
 
 volatile unsigned int eink_refresh_time_counter = 0;
 volatile unsigned int nixie_refresh_time_counter = 0;
 volatile int nixie_digit = 0;
+
+unsigned char temperature_integral_part=0;
+unsigned char temperature_decimal_part=0;
 
 void InitClock(void)
 {
@@ -145,7 +147,8 @@ void PowerOff(void)
 
 void MeasureTemperature(void)
 {
-
+    temperature_integral_part = R_I2C(0x55,0x00) - 64;
+    temperature_decimal_part = ( (R_I2C(0x55,0x10) >> 4) * 625 ) / 100;
 }
 
 void MeasureMotorCurrent(void)
@@ -159,79 +162,103 @@ void DisplayEinkScreen(void)
 	char fan_mode[16] = "mode: "; 
 	char motor_status[16] = "motor: ";
 	char motor_speed[16] = "speed: "; 
+	char temperature[16] = "temp: ";
 
-
-
-	if (intg_fan_status.motor_mode == MOTOR_TURN)
-	if (intg_fan_status.fan_mode == FAN_AUTO_MODE)
+	// Fan mode
+	switch (intg_fan_status.fan_mode)
 	{
+	case FAN_AUTO_MODE:
 		strcat(fan_mode, "auto");
-	}
-	if (intg_fan_status.fan_mode == FAN_MANUAL_MODE)
-	{
+		break;
+	
+	case FAN_MANUAL_MODE:
 		strcat(fan_mode, "manual");
+		break;
+
+	default:
+		break;
 	}
 
-
-
-
-	if (intg_fan_status.motor_mode == MOTOR_TURN)
-	// if (intg_fan_status.motor_mode == MOTOR_PARK)
-	// {
-	// 	strcat(motor_status, "park");
-	// }
+	// Motor mode
+	switch (intg_fan_status.motor_mode)
 	{
+	case MOTOR_TURN:
 		strcat(motor_status, "turn");
-	}
-	if (intg_fan_status.motor_mode == MOTOR_REVERSE)
-	{
+		break;
+	
+	case MOTOR_REVERSE:
 		strcat(motor_status, "reverse");
+		break;
+
+	default:
+		break;
 	}
 
-
-
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_0)
+	// Fan status
+	switch (intg_fan_status.motor_speed)
 	{
+	case MOTOR_SPEED_0:
 		strcat(motor_speed, "1");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_1)
-	{
+		break;
+
+	case MOTOR_SPEED_1:
 		strcat(motor_speed, "2");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_2)
-	{
+		break;
+
+	case MOTOR_SPEED_2:
 		strcat(motor_speed, "3");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_3)
-	{
+		break;
+
+	case MOTOR_SPEED_3:
 		strcat(motor_speed, "4");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_4)
-	{
+		break;
+
+	case MOTOR_SPEED_4:
 		strcat(motor_speed, "5");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_5)
-	{
+		break;
+
+	case MOTOR_SPEED_5:
 		strcat(motor_speed, "6");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_6)
-	{
+		break;
+
+	case MOTOR_SPEED_6:
 		strcat(motor_speed, "7");
-	}
-	if (intg_fan_status.motor_speed == MOTOR_SPEED_7)
-	{
+		break;
+
+	case MOTOR_SPEED_7:
 		strcat(motor_speed, "8");
+		break;
+
+	default:
+		break;
 	}
 
-    // MYRESET();
-    display(fan_mode, 0, 0, TimesNewRoman, size8, 0, 0);
-    display(motor_status, 0, 15,TimesNewRoman, size8, 0, 0);
-    display(motor_speed, 0, 30, TimesNewRoman, size8, 0, 0);
+	// Temperature
+	unsigned char temperature_decade = (temperature_integral_part/10);
+	unsigned char temperature_unit = (temperature_integral_part%10);
+	unsigned char temperature_tenth = (temperature_decimal_part/10);
+	unsigned char temperature_hundredth = (temperature_decimal_part%10);
 
+	strcat(temperature, &(&temperature_decade));
+	strcat(temperature, &(&temperature_unit));
+	strcat(temperature, ".");
+	strcat(temperature, &(&temperature_tenth));
+	strcat(temperature, &(&temperature_hundredth));
+
+	// Refresh 
+    Init_buff();
+
+	// Display fixed instructions about the buttons
     display("S1: on", 0, 90, TimesNewRoman, size8, 0, 0);
     display("S2: off", 80, 90, TimesNewRoman, size8, 0, 0);
     display("S3: mode", 0, 105, TimesNewRoman, size8, 0, 0);
     display("S4: speed", 80, 105, TimesNewRoman, size8, 0, 0);
+
+	// Display changeable information
+    display(fan_mode, 0, 0, TimesNewRoman, size8, 0, 0);
+    display(motor_status, 0, 15,TimesNewRoman, size8, 0, 0);
+    display(motor_speed, 0, 30, TimesNewRoman, size8, 0, 0);
+    display(temperature, 0, 45, TimesNewRoman, size8, 0, 0);
 
 	DIS_IMG(1);
 

@@ -14,6 +14,8 @@
 #include <msp430.h>
 #include "eink_driver.h"
 #include "nixie_driver.h"
+#include "i2c.h"
+#include "tmp421.h"
 #include "intg_fan.h"
 
 /**
@@ -40,6 +42,10 @@ void main(void)
     // Initialize LED nixie tube
     InitNixieGpio();
 
+    // Initialize temperature sensor tmp421
+    InitIIC();
+    InitTmp();	
+
     // Initialize counters
     eink_refresh_time_counter = 0;
     nixie_refresh_time_counter = 0;
@@ -56,8 +62,23 @@ void main(void)
     while (TRUE)
     {
 
-        MotorManualControl();
-        
+        MeasureTemperature();
+        if (intg_fan_status.power == POWER_ON)
+        {
+            if (intg_fan_status.fan_mode == FAN_AUTO_MODE)
+            {
+                MotorAutoControl();
+            }
+            if (intg_fan_status.fan_mode == FAN_MANUAL_MODE)
+            {
+                MotorManualControl();
+            }
+        }
+        if (intg_fan_status.power == POWER_OFF)
+        {
+            ;
+        }
+         
     }
 }
 
@@ -118,19 +139,11 @@ __interrupt void EinkDisplayRefresh()
 __interrupt void NixieDisplayRefresh()
 {
 
-    // nixie_refresh_time_counter ++;
-    // if (nixie_refresh_time_counter > kNixieRefreshTimeCounterMax)
-    // {
-    //     DisplayNixie();
-    //     nixie_refresh_time_counter = 0;
-    // }
-
     nixie_refresh_time_counter ++;
     if (nixie_refresh_time_counter > kNixieRefreshTimeCounterMax)
     {
         DisplayNixie();
         ClearNixie();
     }
-
 
 }

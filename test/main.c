@@ -2,7 +2,7 @@
  * @file main.c
  * @author 
  * @brief Intelligent Fan
- * @version 0.2
+ * @version 0.3
  * @date 2021-04-18
  * 
  * @copyright Copyright (c) 2021
@@ -25,14 +25,14 @@
 void main(void)
 {
 
-    WDTCTL = WDTPW | WDTHOLD;   // Stop watchdog timer
-    __enable_interrupt();       // Enable global interruption
+    WDTCTL = WDTPW | WDTHOLD;      // Stop watchdog timer
+    __enable_interrupt();          // Enable global interruption
 
     // Initialize basic on-board components
     InitClock();
     InitGpio();
-    InitTimerA();
-    // InitAdc();
+    InitTimerA();                  // PWM generator for motor; counter for E-Ink screen and LED-nixie refreshing
+    InitAdc();                     // current sensor
 
     // Initialize E-ink Screen
     PaperIO_Int();

@@ -1,21 +1,16 @@
 #include <msp430.h>
 #include "intg_fan.h"
 
-const double kMotorPwmRatio[8] = {0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.65};
-
+const double kMotorPwmRatio[8] = {0.35,0.40,0.45,0.50,0.55,0.60,0.65,0.70};
 const int kEinkRefreshTimeCounterMax = EINK_REFRESH_TIME/1000*(8000000/0xFFFF);
 const int kNixieRefreshTimeCounterMax = NIXIE_REFRESH_TIME/1000*(8000000/0x1000);
 
-volatile unsigned int eink_refresh_time_counter = 0;
-volatile unsigned int nixie_refresh_time_counter = 0;
-volatile int nixie_digit = 0;
-
-unsigned char* p_temperature_integral_part = NULL;
-unsigned char* p_temperature_decimal_part = NULL;
-unsigned int local_temperature = 0; //  centigrade degree, multiplied by 100
-
 void InitClock(void)
 {
+	/**
+	 * @brief MCLK: 16MHz, SMCLK: 8MHz, ACLK: 32KHz
+	 * 
+	 */
 	UCSCTL6 &= ~XT1OFF;          
 	P5SEL |= BIT2 + BIT3;        
 	UCSCTL6 &= ~XT2OFF;          
@@ -65,29 +60,47 @@ void InitGpio(void)
 
 void InitAdc(void)
 {
-
+	/**
+	 * @brief ADC for current sensor
+	 * 
+	 */
+	ADC12CTL0 |= ADC12MSC;     // Automatic loop sampling conversion
+	ADC12CTL0 |= ADC12ON;      // Enable ADC12 module
+	ADC12CTL1 |= ADC12CONSEQ1; // Single Channel mode
+	ADC12CTL1 |= ADC12SHP;     // ZOH mode
+	ADC12MCTL0 |= ADC12INCH_6; // Channel 6 connected with current sensor module (Pocket-Lab schematic)
+	ADC12CTL0 |= ADC12ENC;
+	ADC12CTL0 |= ADC12SC;
 }
 
 void InitTimerA(void)
 {
 
-	// Timer_A0 Control Register
+	/**
+	 * @brief Timer_A0 for PWM generating
+	 * 
+	 */
 	TA0CTL |= TASSEL_2;// Timer_A0 clock source select: SMCLK 8MHz
 	TA0CTL |= MC_1;// Mode control: up mode
 	TA0CTL |= TACLR;// Timer_A0 clear
 	// Timer_A0 Capture/Compare Control 4 Register
 	TA0CCTL4 = OUTMOD_7;// Reset/set mode
 	TA0CCR0 = PWM_PEROID;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
-	// pwm_ratio = TA0CCR4 / TA0CCR0
 
-	// Timer_A1 Control Register
+	/**
+	 * @brief Timer_A1 for E-Ink Screen refreshing
+	 * 
+	 */
 	TA1CTL |= TASSEL_2;// Timer_A1 clock source select: SMCLK 8MHz
 	TA1CTL |= MC_1;// Mode control: up mode
 	TA1CTL |= TACLR;// Timer_A1 clear
 	TA1CCTL0 = CCIE;// enable capture/compare interrupt
 	TA1CCR0 = 0xFFFF;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
 
-	// Timer_A2 Control Register
+	/**
+	 * @brief Timer_A2 for LED-nixie refreshing
+	 * 
+	 */
 	TA2CTL |= TASSEL_2;// Timer_A2 clock source select: SMCLK 8MHz
 	TA2CTL |= MC_1;// Mode control: up mode
 	TA2CTL |= TACLR;// Timer_A2 clear
@@ -100,10 +113,11 @@ void MotorAutoControl()
 {
 
 }
+
 void MotorManualControl()
 {
 
-	switch (intg_fan_status.motor_speed)
+	switch (intg_fan_status.motor_speed_level)
 	{
 	case MOTOR_SPEED_0:
 		TA0CCR4 = kMotorPwmRatio[0] * PWM_PEROID;
@@ -149,34 +163,35 @@ void PowerOff(void)
 void MeasureTemperature(void)
 {
 
-    p_temperature_integral_part = (R_I2C(0x55,0x00) - 64);
-    p_temperature_decimal_part = (((R_I2C(0x55,0x10) >> 4) * 625) / 100);
-	local_temperature = 100*(int)(*(&(p_temperature_integral_part))) + (int)(*(&(p_temperature_decimal_part)));
+	unsigned char* p_temperature_integral_part = (R_I2C(0x55,0x00) - 64);
+	unsigned char* p_temperature_decimal_part = (((R_I2C(0x55,0x10) >> 4) * 625) / 100);
+	intg_fan_status.local_temperature = 100*(int)(*(&(p_temperature_integral_part))) + (int)(*(&(p_temperature_decimal_part)));
 
 }
 
 void MeasureMotorCurrent(void)
 {
-
+	unsigned int motor_current_Ad_value = ADC12MEM0;
+	intg_fan_status.motor_current = (motor_current_Ad_value/4095*3300)*0.98;
 }
 
 void DisplayEinkScreen(void)
 {
 
-	char fan_mode[16] = "mode: "; 
-	char motor_status[16] = "motor: ";
-	char motor_speed[16] = "speed: "; 
-	char temperature[16] = "temp: ";
+	char str_fan_mode[16] = "mode: "; 
+	char str_motor_status[16] = "motor: ";
+	char str_motor_speed_level[16] = "speed: "; 
+	char str_temperature[16] = "temp: ";
 
 	// Fan mode
 	switch (intg_fan_status.fan_mode)
 	{
 	case FAN_AUTO_MODE:
-		strcat(fan_mode, "auto");
+		strcat(str_fan_mode, "auto");
 		break;
 	
 	case FAN_MANUAL_MODE:
-		strcat(fan_mode, "manual");
+		strcat(str_fan_mode, "manual");
 		break;
 
 	default:
@@ -187,11 +202,11 @@ void DisplayEinkScreen(void)
 	switch (intg_fan_status.motor_mode)
 	{
 	case MOTOR_TURN:
-		strcat(motor_status, "turn");
+		strcat(str_motor_status, "turn");
 		break;
 	
 	case MOTOR_REVERSE:
-		strcat(motor_status, "reverse");
+		strcat(str_motor_status, "reverse");
 		break;
 
 	default:
@@ -199,38 +214,38 @@ void DisplayEinkScreen(void)
 	}
 
 	// Fan status
-	switch (intg_fan_status.motor_speed)
+	switch (intg_fan_status.motor_speed_level)
 	{
 	case MOTOR_SPEED_0:
-		strcat(motor_speed, "1");
+		strcat(str_motor_speed_level, "1");
 		break;
 
 	case MOTOR_SPEED_1:
-		strcat(motor_speed, "2");
+		strcat(str_motor_speed_level, "2");
 		break;
 
 	case MOTOR_SPEED_2:
-		strcat(motor_speed, "3");
+		strcat(str_motor_speed_level, "3");
 		break;
 
 	case MOTOR_SPEED_3:
-		strcat(motor_speed, "4");
+		strcat(str_motor_speed_level, "4");
 		break;
 
 	case MOTOR_SPEED_4:
-		strcat(motor_speed, "5");
+		strcat(str_motor_speed_level, "5");
 		break;
 
 	case MOTOR_SPEED_5:
-		strcat(motor_speed, "6");
+		strcat(str_motor_speed_level, "6");
 		break;
 
 	case MOTOR_SPEED_6:
-		strcat(motor_speed, "7");
+		strcat(str_motor_speed_level, "7");
 		break;
 
 	case MOTOR_SPEED_7:
-		strcat(motor_speed, "8");
+		strcat(str_motor_speed_level, "8");
 		break;
 
 	default:
@@ -238,14 +253,13 @@ void DisplayEinkScreen(void)
 	}
 
 	// Temperature
-
 	unsigned char temp[5] = {0};
-	temp[0] = (local_temperature / 1000)+0x30;
-	temp[1] = ( (local_temperature % 1000) / 100 )+0x30;
+	temp[0] = (intg_fan_status.local_temperature / 1000)+0x30;
+	temp[1] = ( (intg_fan_status.local_temperature % 1000) / 100 )+0x30;
 	temp[2] = '.';
-	temp[3] = ( (local_temperature % 100) / 10 )+0x30;
-	temp[4] = ( (local_temperature % 10) )+0x30;
-	strcat(temperature, temp);
+	temp[3] = ( (intg_fan_status.local_temperature % 100) / 10 )+0x30;
+	temp[4] = ( (intg_fan_status.local_temperature % 10) )+0x30;
+	strcat(str_temperature, temp);
 
 	// Refresh 
     Init_buff();
@@ -259,7 +273,7 @@ void DisplayEinkScreen(void)
 	// Display changeable information
     display(fan_mode, 0, 0, TimesNewRoman, size8, 0, 0);
     display(motor_status, 0, 15,TimesNewRoman, size8, 0, 0);
-    display(motor_speed, 0, 30, TimesNewRoman, size8, 0, 0);
+    display(motor_speed_level, 0, 30, TimesNewRoman, size8, 0, 0);
     display(temperature, 0, 45, TimesNewRoman, size8, 0, 0);
 
 	DIS_IMG(1);
@@ -268,10 +282,35 @@ void DisplayEinkScreen(void)
 
 void DisplayNixie(void)
 {
-
+	/**
+	 * @brief 1st digit: decimal of PWM ratio, 2nd digit: hundredth of PWM ratio, 
+	 *        3rd digit: per 0.1 amper, 4th digit: per 0.01 amper 
+	 * 
+	 */
+	int nixie_digit = 0;
 	for ( nixie_digit = 0; nixie_digit < 4; nixie_digit++)
 	{
-		DisplayOneDigit(nixie_digit,6);
+		switch (nixie_digit)
+		{
+		case 0:
+			DisplayOneDigit(nixie_digit, (int)(kMotorPwmRatio[intg_fan_status.motor_speed_level]*100)/10);
+			break;
+		
+		case 1:
+			DisplayOneDigit(nixie_digit, (int)(kMotorPwmRatio[intg_fan_status.motor_speed_level]*100)%10);
+			break;
+
+		case 2:
+			DisplayNixie(nixie_digit, intg_fan_status.motor_current/1000);
+			break;
+
+		case 3:
+			DisplayNixie(nixie_digit, (intg_fan_status.motor_current/100)%10);
+			break;
+
+		default:
+			break;
+		}
 	}
 
 }

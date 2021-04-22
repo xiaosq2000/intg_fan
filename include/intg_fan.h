@@ -39,17 +39,8 @@
 /* External varibles    -------------------------------------------------- */
 
 extern const double kMotorPwmRatio[]; 
-
 extern const int kEinkRefreshTimeCounterMax;
-extern volatile unsigned int eink_refresh_time_counter;
 extern const int kNixieRefreshTimeCounterMax;
-extern volatile unsigned int nixie_refresh_time_counter;
-extern volatile int nixie_digit;
-
-
-extern unsigned char* p_temperature_integral_part;
-extern unsigned char* p_temperature_decimal_part;
-extern unsigned int local_temperature; //  centigrade degree, multiplied by 100
 
 /* Struct ------------------------------------------- */
 
@@ -58,10 +49,10 @@ struct IntgFanStatus
 
     int power;
     int fan_mode;
-    int motor_current;
-    int temperature;
     int motor_mode;
-    int motor_speed;
+    int motor_speed_level;
+    unsigned int motor_current;
+    unsigned int local_temperature; //  centigrade degree, multiplied by 100
 
 }       intg_fan_status;
 

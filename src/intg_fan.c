@@ -3,7 +3,9 @@
 
 const double kMotorPwmRatio[8] = {0.35,0.40,0.45,0.50,0.55,0.60,0.65,0.70};
 const int kEinkRefreshTimeCounterMax = EINK_REFRESH_TIME/1000*(8000000/0xFFFF);
-const int kNixieRefreshTimeCounterMax = NIXIE_REFRESH_TIME/1000*(8000000/0x1000);
+// const int kNixieRefreshTimeCounterMax = NIXIE_REFRESH_TIME/1000*(8000000/0x1000);
+volatile unsigned int eink_refresh_time_counter = 0;
+// volatile unsigned int nixie_refresh_time_counter = 0;
 
 void InitClock(void)
 {
@@ -23,34 +25,50 @@ void InitClock(void)
 	UCSCTL5 = DIVA_5 +DIVS_1;
 }
 
-void InitGpio(void)
+void InitMotorDriver(void)
 {
-	// H-bridge drive circuit 
-    P1DIR |= BIT5; // NSLEEP
-    P1SEL |= BIT5;
-    P2DIR |= BIT4; // IN1
-    P2DIR |= BIT5; // IN2
 
-    // Button S1
-    P1DIR &= ~BIT2;
-    P1REN |= BIT2;
+	/**
+	 * @brief DRV8837 H-bridge driver
+	 * 
+	 */
+
+    P1DIR |= BIT5;  // NSLEEP
+    P1SEL |= BIT5;
+    P2DIR |= BIT4;  // IN1
+    P2OUT &= ~BIT4; 
+    P2DIR |= BIT5;  // IN2
+    P2OUT |= BIT5; 
+
+}
+
+void InitHCI(void)
+{
+	
+	/**
+	 * @brief Configure HCI Button S1,S2,S3,S4 as interrupt sources
+	 * 
+	 */
+
+    P1REN |= BIT2;  // Button S1
+    P1OUT |= BIT2;
     P1IES &= ~BIT2;
     P1IFG &= ~BIT2;
     P1IE |= BIT2;
-    // Button S2
-    P1DIR &= ~BIT3;
-    P1REN |= BIT3;
+    
+    P1REN |= BIT3;  // Button S2
+    P1OUT |= BIT3;
     P1IES &= ~BIT3;
     P1IFG &= ~BIT3;
     P1IE |= BIT3;
-    // Button S3
-    P2DIR &= ~BIT3;
-    P2REN |= BIT3;
+    
+    P2REN |= BIT3;  // Button S3
+    P2OUT |= BIT3;
     P2IES &= ~BIT3;
     P2IFG &= ~BIT3;
     P2IE |= BIT3;
-    // Button S4
-    P2REN |= BIT6;
+    
+    P2REN |= BIT6;  // Button S4
     P2OUT |= BIT6;
     P2IES &= ~BIT6;
     P2IFG &= ~BIT6;
@@ -58,12 +76,13 @@ void InitGpio(void)
 
 }
 
-void InitAdc(void)
+void InitCurrentSensor(void)
 {
 	/**
-	 * @brief ADC for current sensor
+	 * @brief ADC for current sensor INA210
 	 * 
 	 */
+
 	ADC12CTL0 |= ADC12MSC;     // Automatic loop sampling conversion
 	ADC12CTL0 |= ADC12ON;      // Enable ADC12 module
 	ADC12CTL1 |= ADC12CONSEQ1; // Single Channel mode
@@ -73,74 +92,84 @@ void InitAdc(void)
 	ADC12CTL0 |= ADC12SC;
 }
 
-void InitTimerA(void)
+void InitMotorPwm(void)
 {
 
 	/**
 	 * @brief Timer_A0 for PWM generating
 	 * 
 	 */
+
 	TA0CTL |= TASSEL_2;// Timer_A0 clock source select: SMCLK 8MHz
 	TA0CTL |= MC_1;// Mode control: up mode
 	TA0CTL |= TACLR;// Timer_A0 clear
+
 	// Timer_A0 Capture/Compare Control 4 Register
 	TA0CCTL4 = OUTMOD_7;// Reset/set mode
 	TA0CCR0 = PWM_PEROID;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+
+
+	/**
+	 * @brief Timer_A2 for LED-nixie refreshing
+	 * 
+	 */
+
+	// TA2CTL |= TASSEL_2;// Timer_A2 clock source select: SMCLK 8MHz
+	// TA2CTL |= MC_1;// Mode control: up mode
+	// TA2CTL |= TACLR;// Timer_A2 clear
+	// TA2CCTL0 = CCIE;// enable capture/compare interrupt
+	// TA2CCR0 = 0x1000;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
+
+}
+
+void InitEinkRefreshCounter(void)
+{
 
 	/**
 	 * @brief Timer_A1 for E-Ink Screen refreshing
 	 * 
 	 */
+
 	TA1CTL |= TASSEL_2;// Timer_A1 clock source select: SMCLK 8MHz
 	TA1CTL |= MC_1;// Mode control: up mode
 	TA1CTL |= TACLR;// Timer_A1 clear
 	TA1CCTL0 = CCIE;// enable capture/compare interrupt
 	TA1CCR0 = 0xFFFF;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
 
-	/**
-	 * @brief Timer_A2 for LED-nixie refreshing
-	 * 
-	 */
-	TA2CTL |= TASSEL_2;// Timer_A2 clock source select: SMCLK 8MHz
-	TA2CTL |= MC_1;// Mode control: up mode
-	TA2CTL |= TACLR;// Timer_A2 clear
-	TA2CCTL0 = CCIE;// enable capture/compare interrupt
-	TA2CCR0 = 0x1000;// TAxCCRn holds the data for the comparison to the timer in the Timer_A Register, TAR.
-
 }
 
-void MotorAutoControl()
+void MotorAutoControl(void)
 {
 
 }
 
-void MotorManualControl()
+void MotorManualControl(void)
 {
 
 	switch (intg_fan_status.motor_speed_level)
 	{
-	case MOTOR_SPEED_0:
+	case 0:
 		TA0CCR4 = kMotorPwmRatio[0] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_1:
+	case 1:
 		TA0CCR4 = kMotorPwmRatio[1] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_2:
+	case 2:
 		TA0CCR4 = kMotorPwmRatio[2] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_3:
+	case 3:
 		TA0CCR4 = kMotorPwmRatio[3] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_4:
+	case 4:
 		TA0CCR4 = kMotorPwmRatio[4] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_5:
+	case 5:
 		TA0CCR4 = kMotorPwmRatio[5] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_6:
+	case 6:
 		TA0CCR4 = kMotorPwmRatio[6] * PWM_PEROID;
 		break;
-	case MOTOR_SPEED_7:
+	case 7:
 		TA0CCR4 = kMotorPwmRatio[7] * PWM_PEROID;
 		break;
 	default:
@@ -171,8 +200,10 @@ void MeasureTemperature(void)
 
 void MeasureMotorCurrent(void)
 {
-	unsigned int motor_current_Ad_value = ADC12MEM0;
-	intg_fan_status.motor_current = (motor_current_Ad_value/4095*3300)*0.98;
+
+	volatile unsigned int motor_current_ad_value = ADC12MEM0;
+	intg_fan_status.motor_current = motor_current_ad_value*3300/4095*0.98;
+
 }
 
 void DisplayEinkScreen(void)
@@ -271,10 +302,10 @@ void DisplayEinkScreen(void)
     display("S4: speed", 80, 105, TimesNewRoman, size8, 0, 0);
 
 	// Display changeable information
-    display(fan_mode, 0, 0, TimesNewRoman, size8, 0, 0);
-    display(motor_status, 0, 15,TimesNewRoman, size8, 0, 0);
-    display(motor_speed_level, 0, 30, TimesNewRoman, size8, 0, 0);
-    display(temperature, 0, 45, TimesNewRoman, size8, 0, 0);
+    display(str_fan_mode, 0, 0, TimesNewRoman, size8, 0, 0);
+    display(str_motor_status, 0, 15,TimesNewRoman, size8, 0, 0);
+    display(str_motor_speed_level, 0, 30, TimesNewRoman, size8, 0, 0);
+    display(str_temperature, 0, 45, TimesNewRoman, size8, 0, 0);
 
 	DIS_IMG(1);
 
@@ -284,33 +315,46 @@ void DisplayNixie(void)
 {
 	/**
 	 * @brief 1st digit: decimal of PWM ratio, 2nd digit: hundredth of PWM ratio, 
-	 *        3rd digit: per 0.1 amper, 4th digit: per 0.01 amper 
+	 *        3rd digit: per 10 miliampere, 4th digit: per 1 miliampere 
 	 * 
 	 */
-	int nixie_digit = 0;
+	int nixie_digit;
+	volatile int i;
 	for ( nixie_digit = 0; nixie_digit < 4; nixie_digit++)
 	{
 		switch (nixie_digit)
 		{
 		case 0:
-			DisplayOneDigit(nixie_digit, (int)(kMotorPwmRatio[intg_fan_status.motor_speed_level]*100)/10);
+			for ( i = 0; i < 30; i++)
+			{
+				DisplayOneDigit(nixie_digit, (int)(kMotorPwmRatio[intg_fan_status.motor_speed_level]*100)/10);
+			}
+			
 			break;
 		
 		case 1:
-			DisplayOneDigit(nixie_digit, (int)(kMotorPwmRatio[intg_fan_status.motor_speed_level]*100)%10);
+			for ( i = 0; i < 30; i++)
+			{
+				DisplayOneDigit(nixie_digit, (int)(kMotorPwmRatio[intg_fan_status.motor_speed_level]*100)%10);
+			}
 			break;
 
 		case 2:
-			DisplayNixie(nixie_digit, intg_fan_status.motor_current/1000);
+			for ( i = 0; i < 30; i++)
+			{
+				DisplayOneDigit(nixie_digit, intg_fan_status.motor_current/10);
+			}
 			break;
 
 		case 3:
-			DisplayNixie(nixie_digit, (intg_fan_status.motor_current/100)%10);
+			for ( i = 0; i < 30; i++)
+			{
+				DisplayOneDigit(nixie_digit, intg_fan_status.motor_current%10);
+			}
 			break;
 
 		default:
 			break;
 		}
 	}
-
 }

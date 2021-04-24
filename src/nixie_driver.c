@@ -1,3 +1,12 @@
+/**
+ * @file nixie_driver.c
+ * @author Shuqi Xiao
+ * @brief LED-nixie driver
+ * @version 1.0
+ * @date 2021-04-24
+ * 
+ */
+
 #include <msp430.h>
 #include "nixie_driver.h"
 
@@ -423,7 +432,7 @@ void DisplayOneDigit(int digit, int num)
 			}
 			break;
 		case 5:
-			if ( ((0x5D&(0x80>>i))<<i) == 0x80 )
+			if ( ((0x5B&(0x80>>i))<<i) == 0x80 )
 			{
 				if (i==0)
 				{

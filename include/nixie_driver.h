@@ -1,3 +1,12 @@
+/**
+ * @file nixie_driver.h
+ * @author Shuqi Xiao
+ * @brief LED-nixie driver
+ * @version 1.0
+ * @date 2021-04-24
+ * 
+ */
+
 #ifndef _NIXIE_DRIVER_H_
 #define _NIXIE_DRIVER_H_
 
@@ -20,7 +29,7 @@
 
 #define NIXIE_CTRL_PORT_DIR_0 P6DIR // dot
 #define NIXIE_CTRL_PORT_DIR_1 P6DIR // A
-#define NIXIE_CTRL_PORT_DIR_2 P6DIR // B
+#define NIXIE_CTRL_PORT_DIR_2 P4DIR // B
 #define NIXIE_CTRL_PORT_DIR_3 P7DIR // C
 #define NIXIE_CTRL_PORT_DIR_4 P7DIR // D
 #define NIXIE_CTRL_PORT_DIR_5 P8DIR // E
@@ -29,7 +38,7 @@
 
 #define NIXIE_CTRL_PORT_OUT_0 P6OUT // dot
 #define NIXIE_CTRL_PORT_OUT_1 P6OUT // A
-#define NIXIE_CTRL_PORT_OUT_2 P6OUT // B
+#define NIXIE_CTRL_PORT_OUT_2 P4OUT // B
 #define NIXIE_CTRL_PORT_OUT_3 P7OUT // C
 #define NIXIE_CTRL_PORT_OUT_4 P7OUT // D
 #define NIXIE_CTRL_PORT_OUT_5 P8OUT // E
@@ -38,7 +47,7 @@
 
 #define NIXIE_CTRL_CHANNEL_0 BIT4
 #define NIXIE_CTRL_CHANNEL_1 BIT5
-#define NIXIE_CTRL_CHANNEL_2 BIT6
+#define NIXIE_CTRL_CHANNEL_2 BIT3
 #define NIXIE_CTRL_CHANNEL_3 BIT0
 #define NIXIE_CTRL_CHANNEL_4 BIT4
 #define NIXIE_CTRL_CHANNEL_5 BIT1
